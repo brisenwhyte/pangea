@@ -1,9 +1,8 @@
 import { useState, useEffect } from 'react';
-import { User as FirebaseUser, onAuthStateChanged, signInWithRedirect, getRedirectResult, signOut } from 'firebase/auth';
+import { User as FirebaseUser, onAuthStateChanged, signInWithRedirect, getRedirectResult, signOut, signInWithPopup } from 'firebase/auth';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
-import { auth, googleProvider, db } from '../config/firebase';
-import { User } from '../types';
-import { signInWithPopup } from "firebase/auth";
+import { auth, googleProvider, db } from '../config/firebase'; // Assuming your firebase config is in this path
+import { User } from '../types'; // Assuming your User type is defined here
 
 export const useAuth = () => {
   const [user, setUser] = useState<User | null>(null);
@@ -11,63 +10,60 @@ export const useAuth = () => {
   const [isNewUser, setIsNewUser] = useState(false);
 
   useEffect(() => {
+    // This listener is the single source of truth for the user's auth state.
+    // It automatically handles the result of a redirect.
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser: FirebaseUser | null) => {
-      // Check for redirect result first
-      try {
-        const result = await getRedirectResult(auth);
-        if (result?.user) {
-          firebaseUser = result.user;
-        }
-      } catch (error) {
-        console.error('Error getting redirect result:', error);
-      }
-
       if (firebaseUser) {
-        // Check if user exists in Firestore
-        const userDoc = await getDoc(doc(db, 'users', firebaseUser.uid));
-        
+        // User is signed in. Check if they are new or existing.
+        const userDocRef = doc(db, 'users', firebaseUser.uid);
+        const userDoc = await getDoc(userDocRef);
+
         if (userDoc.exists()) {
+          // User exists in Firestore, set their data.
           const userData = userDoc.data() as User;
           setUser(userData);
           setIsNewUser(false);
         } else {
-          // New user - needs profile setup
+          // This is a new user who needs to complete their profile.
+          // Create a temporary user object from the Google account info.
           setUser({
             uid: firebaseUser.uid,
             email: firebaseUser.email || '',
             name: firebaseUser.displayName || '',
-            currency: 'USD',
+            currency: 'USD', // A default value
             photoURL: firebaseUser.photoURL || undefined
           });
           setIsNewUser(true);
         }
       } else {
+        // User is signed out.
         setUser(null);
         setIsNewUser(false);
       }
       setLoading(false);
     });
 
+    // Clean up the subscription when the component unmounts
     return () => unsubscribe();
   }, []);
 
-const signInWithGoogle = async () => {
-  try {
-    const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+  const signInWithGoogle = async () => {
+    try {
+      // Simple check for mobile user agents
+      const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
 
-    if (!isMobile) {
-      // Desktop → Popup
-      await signInWithPopup(auth, googleProvider);
-    } else {
-      // Mobile → Redirect
-      await signInWithRedirect(auth, googleProvider);
+      if (!isMobile) {
+        // Use popup for a smoother experience on desktop
+        await signInWithPopup(auth, googleProvider);
+      } else {
+        // Use redirect for mobile, as popups are often blocked
+        await signInWithRedirect(auth, googleProvider);
+      }
+    } catch (error) {
+      console.error("Error signing in with Google:", error);
+      throw error;
     }
-  } catch (error) {
-    console.error("Error signing in with Google:", error);
-    throw error;
-  }
-};
-
+  };
 
   const signOutUser = async () => {
     try {
@@ -81,6 +77,7 @@ const signInWithGoogle = async () => {
   const completeProfile = async (name: string, currency: string) => {
     if (!user) return;
 
+    // Create the final user data object to save
     const userData: User = {
       ...user,
       name,
@@ -88,7 +85,9 @@ const signInWithGoogle = async () => {
     };
 
     try {
+      // Save the complete profile to Firestore
       await setDoc(doc(db, 'users', user.uid), userData);
+      // Update the local state
       setUser(userData);
       setIsNewUser(false);
     } catch (error) {
