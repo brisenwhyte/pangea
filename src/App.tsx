@@ -1,0 +1,45 @@
+import React from 'react';
+import { Toaster } from 'react-hot-toast';
+import { useAuth } from './hooks/useAuth';
+import LoginScreen from './components/Auth/LoginScreen';
+import ProfileSetup from './components/Auth/ProfileSetup';
+import Dashboard from './components/Dashboard/Dashboard';
+
+function App() {
+  const { user, loading, isNewUser } = useAuth();
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-blue-50 flex items-center justify-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return (
+      <>
+        <LoginScreen />
+        <Toaster position="top-right" />
+      </>
+    );
+  }
+
+  if (isNewUser) {
+    return (
+      <>
+        <ProfileSetup />
+        <Toaster position="top-right" />
+      </>
+    );
+  }
+
+  return (
+    <>
+      <Dashboard />
+      <Toaster position="top-right" />
+    </>
+  );
+}
+
+export default App;
