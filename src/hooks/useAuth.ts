@@ -7,6 +7,8 @@ import {
   getRedirectResult,
   signOut,
   signInWithPopup,
+  setPersistence, 
+  browserLocalPersistence
 } from 'firebase/auth';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { auth, googleProvider, db } from '../config/firebase'; // adjust path if needed
@@ -73,8 +75,9 @@ export const useAuth = () => {
   const signInWithGoogle = async () => {
     try {
       const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-
+      await setPersistence(auth, browserLocalPersistence);
       if (isMobile) {
+        
         await signInWithRedirect(auth, googleProvider);
       } else {
         await signInWithPopup(auth, googleProvider);
