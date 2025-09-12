@@ -1,4 +1,4 @@
-// useAuth.ts - Debug version with enhanced mobile support
+// Enhanced debug version of useAuth.ts
 import { useState, useEffect } from 'react';
 import {
   User as FirebaseUser,
@@ -9,7 +9,8 @@ import {
   signInWithPopup,
   setPersistence, 
   browserLocalPersistence,
-  GoogleAuthProvider
+  GoogleAuthProvider,
+  browserSessionPersistence
 } from 'firebase/auth';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { auth, googleProvider, db } from '../config/firebase';
@@ -22,58 +23,101 @@ export const useAuth = () => {
   const [authError, setAuthError] = useState<string | null>(null);
   const [authLoading, setAuthLoading] = useState(false);
 
-  // Enhanced mobile detection
+  // Enhanced mobile detection with more specific checks
   const isMobileDevice = () => {
     const userAgent = navigator.userAgent.toLowerCase();
-    const isMobile = /android|webos|iphone|ipad|ipod|blackberry|iemobile|opera mini/i.test(userAgent);
+    const mobileKeywords = ['android', 'webos', 'iphone', 'ipad', 'ipod', 'blackberry', 'iemobile', 'opera mini'];
+    const isMobile = mobileKeywords.some(keyword => userAgent.includes(keyword));
     const isSmallScreen = window.innerWidth <= 768;
     const isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+    const isAndroid = /Android/.test(navigator.userAgent);
     
-    console.log('Device detection:', { isMobile, isSmallScreen, isTouchDevice, userAgent });
+    console.log('Enhanced device detection:', { 
+      userAgent, 
+      isMobile, 
+      isSmallScreen, 
+      isTouchDevice, 
+      isIOS,
+      isAndroid,
+      screenSize: `${window.innerWidth}x${window.innerHeight}`,
+      maxTouchPoints: navigator.maxTouchPoints
+    });
+    
     return isMobile || (isSmallScreen && isTouchDevice);
   };
 
-  // Handle redirect result (important for mobile)
+  // Handle redirect result with enhanced logging
   useEffect(() => {
     const handleRedirectResult = async () => {
       try {
-        console.log('Checking for redirect result...');
+        console.log('🔍 Checking for redirect result...');
+        console.log('Current URL:', window.location.href);
+        console.log('Auth state before redirect check:', auth.currentUser?.uid || 'No user');
+        
         const result = await getRedirectResult(auth);
+        console.log('Redirect result received:', result);
+        
         if (result && result.user) {
-          console.log('Redirect login successful:', result.user);
-          // The onAuthStateChanged will handle the user state update
+          console.log('✅ Redirect login successful:', {
+            uid: result.user.uid,
+            email: result.user.email,
+            displayName: result.user.displayName
+          });
+          
+          // Check if this was a fresh sign-in
+          const credential = GoogleAuthProvider.credentialFromResult(result);
+          console.log('Credential from result:', credential);
+          
         } else {
-          console.log('No redirect result found');
+          console.log('ℹ️ No redirect result found - this is normal if not coming from redirect');
         }
       } catch (error: any) {
-        console.error('Error handling redirect result:', error);
-        setAuthError(error.message || 'Authentication failed');
+        console.error('❌ Error handling redirect result:', {
+          code: error.code,
+          message: error.message,
+          stack: error.stack
+        });
+        
+        // Handle specific redirect errors
+        if (error.code === 'auth/web-storage-unsupported') {
+          setAuthError('Your browser doesn\'t support web storage. Please enable cookies and try again.');
+        } else if (error.code === 'auth/operation-not-allowed') {
+          setAuthError('Google sign-in is not enabled. Please contact support.');
+        } else {
+          setAuthError(`Authentication error: ${error.message}`);
+        }
       }
     };
 
     handleRedirectResult();
   }, []);
 
-  // Main auth state listener
+  // Auth state listener with enhanced logging
   useEffect(() => {
-    console.log('Setting up auth state listener...');
+    console.log('🎯 Setting up auth state listener...');
+    
     const unsubscribe = onAuthStateChanged(
       auth,
       async (firebaseUser: FirebaseUser | null) => {
-        console.log('Auth state changed:', firebaseUser?.uid || 'No user');
+        console.log('🔄 Auth state changed:', {
+          userId: firebaseUser?.uid || 'No user',
+          email: firebaseUser?.email || 'No email',
+          timestamp: new Date().toISOString()
+        });
         
         if (firebaseUser) {
           try {
+            console.log('👤 Processing authenticated user...');
             const userDocRef = doc(db, 'users', firebaseUser.uid);
             const userDoc = await getDoc(userDocRef);
 
             if (userDoc.exists()) {
               const userData = userDoc.data() as User;
-              console.log('Existing user loaded:', userData);
+              console.log('📋 Existing user loaded from Firestore:', userData);
               setUser(userData);
               setIsNewUser(false);
             } else {
-              // New user, prepare temp profile
               const tempUser = {
                 uid: firebaseUser.uid,
                 email: firebaseUser.email || '',
@@ -81,16 +125,16 @@ export const useAuth = () => {
                 currency: 'USD',
                 photoURL: firebaseUser.photoURL || undefined,
               };
-              console.log('New user created:', tempUser);
+              console.log('🆕 New user profile created:', tempUser);
               setUser(tempUser);
               setIsNewUser(true);
             }
-          } catch (error) {
-            console.error('Error loading user data:', error);
-            setAuthError('Failed to load user data');
+          } catch (error: any) {
+            console.error('❌ Error loading user data from Firestore:', error);
+            setAuthError('Failed to load user profile');
           }
         } else {
-          console.log('No user, clearing state');
+          console.log('🚪 No authenticated user, clearing state');
           setUser(null);
           setIsNewUser(false);
         }
@@ -99,85 +143,130 @@ export const useAuth = () => {
     );
 
     return () => {
-      console.log('Cleaning up auth listener');
+      console.log('🧹 Cleaning up auth listener');
       unsubscribe();
     };
   }, []);
 
-  // Enhanced sign in with Google
+  // Enhanced sign in function
   const signInWithGoogle = async () => {
-    console.log('signInWithGoogle called');
+    console.log('🚀 signInWithGoogle initiated');
+    console.log('Auth object:', auth);
+    console.log('Google provider:', googleProvider);
+    
     setAuthLoading(true);
     setAuthError(null);
 
     try {
-      // Set persistence first
-      await setPersistence(auth, browserLocalPersistence);
-      console.log('Persistence set to local');
+      // Test Firebase connection
+      console.log('🔗 Testing Firebase connection...');
+      console.log('Auth app:', auth.app.name);
+      console.log('Auth config:', auth.config);
 
-      // Configure the provider with additional scopes if needed
+      // Set persistence with logging
+      console.log('💾 Setting persistence...');
+      await setPersistence(auth, browserLocalPersistence);
+      console.log('✅ Persistence set successfully');
+
+      // Configure provider with detailed logging
+      console.log('⚙️ Configuring Google provider...');
       googleProvider.addScope('email');
       googleProvider.addScope('profile');
-      
-      // Set custom parameters
       googleProvider.setCustomParameters({
-        prompt: 'select_account'
+        prompt: 'select_account',
+         // Remove any domain restriction
       });
+      console.log('✅ Provider configured with scopes and custom parameters');
 
       const isMobile = isMobileDevice();
-      console.log('Is mobile device:', isMobile);
+      console.log(`📱 Authentication method: ${isMobile ? 'REDIRECT' : 'POPUP'}`);
 
       if (isMobile) {
-        console.log('Using redirect method for mobile');
-        // For mobile, use redirect
+        console.log('🔄 Starting redirect authentication...');
+        console.log('Current location before redirect:', window.location.href);
+        
+        // Add a small delay to ensure all logging is captured
+        await new Promise(resolve => setTimeout(resolve, 100));
+        
         await signInWithRedirect(auth, googleProvider);
-        // Note: After redirect, the page will reload and getRedirectResult will handle the result
+        console.log('🎯 Redirect initiated (you should be redirected now)');
+        
       } else {
-        console.log('Using popup method for desktop');
-        // For desktop, use popup
-        const result = await signInWithPopup(auth, googleProvider);
-        console.log('Popup sign-in successful:', result.user);
-      }
-    } catch (error: any) {
-      console.error('Error signing in with Google:', error);
-      
-      // Handle specific error cases
-      if (error.code === 'auth/popup-blocked') {
-        console.log('Popup blocked, falling back to redirect');
+        console.log('🪟 Starting popup authentication...');
+        
         try {
-          await signInWithRedirect(auth, googleProvider);
-        } catch (redirectError: any) {
-          console.error('Redirect also failed:', redirectError);
-          setAuthError('Sign-in failed. Please try again.');
+          const result = await signInWithPopup(auth, googleProvider);
+          console.log('✅ Popup authentication successful:', {
+            uid: result.user.uid,
+            email: result.user.email,
+            displayName: result.user.displayName
+          });
+          
+          const credential = GoogleAuthProvider.credentialFromResult(result);
+          console.log('🔑 Credential obtained:', credential?.accessToken ? 'Yes' : 'No');
+          
+        } catch (popupError: any) {
+          console.error('❌ Popup authentication failed:', popupError);
+          
+          if (popupError.code === 'auth/popup-blocked') {
+            console.log('🚫 Popup blocked, falling back to redirect...');
+            await signInWithRedirect(auth, googleProvider);
+          } else {
+            throw popupError;
+          }
         }
-      } else if (error.code === 'auth/cancelled-popup-request') {
-        console.log('User cancelled the sign-in');
-        setAuthError('Sign-in was cancelled');
-      } else if (error.code === 'auth/popup-closed-by-user') {
-        console.log('User closed the popup');
-        setAuthError('Sign-in popup was closed');
-      } else {
-        setAuthError(error.message || 'Authentication failed');
       }
+      
+    } catch (error: any) {
+      console.error('❌ Authentication error:', {
+        code: error.code,
+        message: error.message,
+        stack: error.stack
+      });
+      
+      let errorMessage = 'Authentication failed';
+      
+      switch (error.code) {
+        case 'auth/popup-closed-by-user':
+          errorMessage = 'Sign-in was cancelled';
+          break;
+        case 'auth/network-request-failed':
+          errorMessage = 'Network error. Please check your connection';
+          break;
+        case 'auth/too-many-requests':
+          errorMessage = 'Too many attempts. Please try again later';
+          break;
+        case 'auth/operation-not-allowed':
+          errorMessage = 'Google sign-in is not properly configured';
+          break;
+        default:
+          errorMessage = error.message || 'Unknown authentication error';
+      }
+      
+      setAuthError(errorMessage);
     } finally {
       setAuthLoading(false);
     }
   };
 
-  // Sign out
+  // Sign out with logging
   const signOutUser = async () => {
     try {
-      console.log('Signing out user');
+      console.log('👋 Signing out user...');
       await signOut(auth);
+      console.log('✅ Sign out successful');
     } catch (error: any) {
-      console.error('Error signing out:', error);
+      console.error('❌ Sign out error:', error);
       throw error;
     }
   };
 
-  // Complete profile for new users
+  // Complete profile with logging
   const completeProfile = async (name: string, currency: string) => {
-    if (!user) return;
+    if (!user) {
+      console.error('❌ Cannot complete profile: no user');
+      return;
+    }
 
     const userData: User = {
       ...user,
@@ -186,18 +275,19 @@ export const useAuth = () => {
     };
 
     try {
-      console.log('Saving user profile:', userData);
+      console.log('💾 Saving user profile to Firestore:', userData);
       await setDoc(doc(db, 'users', user.uid), userData);
       setUser(userData);
       setIsNewUser(false);
+      console.log('✅ Profile saved successfully');
     } catch (error: any) {
-      console.error('Error saving user profile:', error);
+      console.error('❌ Error saving user profile:', error);
       throw error;
     }
   };
 
-  // Clear auth error
   const clearAuthError = () => {
+    console.log('🧹 Clearing auth error');
     setAuthError(null);
   };
 

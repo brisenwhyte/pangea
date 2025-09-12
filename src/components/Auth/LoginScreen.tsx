@@ -1,49 +1,77 @@
-import React from 'react';
-import { Wallet, AlertCircle, Loader } from 'lucide-react';
+// LoginScreen.tsx - Production version with debug capabilities
+import React, { useState } from 'react';
+import { Wallet, AlertCircle, Loader, Info, CheckCircle, XCircle } from 'lucide-react';
+import { useAuth } from '../../hooks/useAuth'; // Your actual useAuth hook
 
-// Mock enhanced useAuth hook for demo
-const useAuth = () => {
-  const [authLoading, setAuthLoading] = React.useState(false);
-  const [authError, setAuthError] = React.useState(null);
-
-  return {
-    signInWithGoogle: async () => {
-      console.log('Google Sign In clicked');
-      setAuthLoading(true);
-      setAuthError(null);
-      
-      // Simulate auth process
-      setTimeout(() => {
-        setAuthLoading(false);
-        // Simulate error for demo
-        // setAuthError('Authentication failed. Please try again.');
-      }, 2000);
-    },
-    authLoading,
-    authError,
-    clearAuthError: () => setAuthError(null)
-  };
-};
-
-const LoginScreen = () => {
+const LoginScreen: React.FC = () => {
   const { signInWithGoogle, authLoading, authError, clearAuthError } = useAuth();
+  const [showDebugInfo, setShowDebugInfo] = useState(false); // Set to false for production
 
-  // Debug info
-  const debugInfo = {
-    userAgent: navigator.userAgent,
-    screenSize: `${window.innerWidth}x${window.innerHeight}`,
-    isTouchDevice: 'ontouchstart' in window,
-    platform: navigator.platform,
-    isOnline: navigator.onLine,
+  // Comprehensive device and environment info
+  const getEnvironmentInfo = () => {
+    return {
+      userAgent: navigator.userAgent,
+      platform: navigator.platform,
+      screenSize: `${window.innerWidth}x${window.innerHeight}`,
+      devicePixelRatio: window.devicePixelRatio,
+      isTouchDevice: 'ontouchstart' in window,
+      maxTouchPoints: navigator.maxTouchPoints,
+      isOnline: navigator.onLine,
+      cookieEnabled: navigator.cookieEnabled,
+      language: navigator.language,
+      currentURL: window.location.href,
+      origin: window.location.origin,
+      hostname: window.location.hostname,
+      protocol: window.location.protocol,
+      isSecureContext: window.isSecureContext,
+      localStorageSupported: (() => {
+        try {
+          const test = '__test__';
+          localStorage.setItem(test, test);
+          localStorage.removeItem(test);
+          return true;
+        } catch (e) {
+          return false;
+        }
+      })(),
+      sessionStorageSupported: (() => {
+        try {
+          const test = '__test__';
+          sessionStorage.setItem(test, test);
+          sessionStorage.removeItem(test);
+          return true;
+        } catch (e) {
+          return false;
+        }
+      })(),
+    };
   };
 
-  const handleSignIn = () => {
-    console.log('Sign in button clicked');
-    console.log('Debug info:', debugInfo);
+  const envInfo = getEnvironmentInfo();
+  
+  const getDeviceType = () => {
+    const ua = navigator.userAgent.toLowerCase();
+    if (/android/.test(ua)) return 'Android';
+    if (/iphone|ipad|ipod/.test(ua)) return 'iOS';
+    if (/windows phone/.test(ua)) return 'Windows Phone';
+    if (envInfo.isTouchDevice && parseInt(envInfo.screenSize.split('x')[0]) < 768) return 'Mobile (Generic)';
+    return 'Desktop/Laptop';
+  };
+
+  const handleSignIn = async () => {
+    console.log('🖱️ Sign in button clicked');
+    console.log('📊 Environment Info:', envInfo);
+    console.log('📱 Device Type:', getDeviceType());
+    
     if (authError) {
       clearAuthError();
     }
-    signInWithGoogle();
+    
+    try {
+      await signInWithGoogle();
+    } catch (error) {
+      console.error('❌ Sign in failed:', error);
+    }
   };
 
   return (
@@ -94,7 +122,8 @@ const LoginScreen = () => {
               }`}
               style={{
                 WebkitTapHighlightColor: 'transparent',
-                touchAction: 'manipulation'
+                touchAction: 'manipulation',
+                minHeight: '44px' // Ensure minimum tap target size for mobile
               }}
             >
               {authLoading ? (
@@ -122,20 +151,68 @@ const LoginScreen = () => {
           </div>
         </div>
 
-        {/* Debug Info Card - Remove in production */}
-        <div className="bg-gray-50 rounded-lg p-4 text-xs space-y-2">
-          <h3 className="font-semibold text-gray-700 mb-2">Debug Info:</h3>
-          <div className="space-y-1 text-gray-600">
-            <p><strong>Screen:</strong> {debugInfo.screenSize}</p>
-            <p><strong>Touch:</strong> {debugInfo.isTouchDevice ? 'Yes' : 'No'}</p>
-            <p><strong>Platform:</strong> {debugInfo.platform}</p>
-            <p><strong>Online:</strong> {debugInfo.isOnline ? 'Yes' : 'No'}</p>
-            <p><strong>User Agent:</strong> {debugInfo.userAgent.substring(0, 50)}...</p>
-          </div>
-          <div className="mt-2 pt-2 border-t border-gray-200">
-            <p className="text-gray-500">Check browser console for detailed logs</p>
-          </div>
-        </div>
+        {/* Debug Info Toggle - Only show in development */}
+        {process.env.NODE_ENV === 'development' && (
+          <>
+            <div className="text-center">
+              <button
+                onClick={() => setShowDebugInfo(!showDebugInfo)}
+                className="text-sm text-blue-600 hover:text-blue-800"
+              >
+                {showDebugInfo ? 'Hide' : 'Show'} Debug Info
+              </button>
+            </div>
+
+            {/* Debug Info Panel */}
+            {showDebugInfo && (
+              <div className="bg-gray-50 rounded-lg p-4 text-xs space-y-4">
+                <h3 className="font-semibold text-gray-700">Debug Information</h3>
+                
+                <div className="space-y-2">
+                  <h4 className="font-medium text-gray-600">Device & Browser</h4>
+                  <div className="grid grid-cols-2 gap-2 text-gray-500">
+                    <div className="flex items-center space-x-1">
+                      <Info className="w-3 h-3 text-blue-500" />
+                      <span>Device: {getDeviceType()}</span>
+                    </div>
+                    <div className="flex items-center space-x-1">
+                      {envInfo.isTouchDevice ? 
+                        <CheckCircle className="w-3 h-3 text-green-500" /> : 
+                        <XCircle className="w-3 h-3 text-red-500" />
+                      }
+                      <span>Touch: {envInfo.isTouchDevice ? 'Yes' : 'No'}</span>
+                    </div>
+                    <div className="flex items-center space-x-1">
+                      {envInfo.isOnline ? 
+                        <CheckCircle className="w-3 h-3 text-green-500" /> : 
+                        <XCircle className="w-3 h-3 text-red-500" />
+                      }
+                      <span>Online: {envInfo.isOnline ? 'Yes' : 'No'}</span>
+                    </div>
+                    <div className="flex items-center space-x-1">
+                      {envInfo.isSecureContext ? 
+                        <CheckCircle className="w-3 h-3 text-green-500" /> : 
+                        <XCircle className="w-3 h-3 text-red-500" />
+                      }
+                      <span>HTTPS: {envInfo.isSecureContext ? 'Yes' : 'No'}</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="text-gray-500 space-y-1">
+                  <p><strong>URL:</strong> {envInfo.currentURL}</p>
+                  <p><strong>Screen:</strong> {envInfo.screenSize}</p>
+                  <p><strong>User Agent:</strong> {envInfo.userAgent.substring(0, 50)}...</p>
+                </div>
+
+                <div className="mt-4 pt-4 border-t border-gray-200 text-gray-500">
+                  <p>📱 Mobile devices use redirect flow</p>
+                  <p>🖥️ Desktop uses popup flow</p>
+                </div>
+              </div>
+            )}
+          </>
+        )}
       </div>
     </div>
   );
