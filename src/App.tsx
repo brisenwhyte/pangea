@@ -1,9 +1,10 @@
-import React from 'react';
-import { Toaster } from 'react-hot-toast';
-import { useAuth } from './hooks/useAuth';
-import LoginScreen from './components/Auth/LoginScreen';
-import ProfileSetup from './components/Auth/ProfileSetup';
-import Dashboard from './components/Dashboard/Dashboard';
+import React from "react";
+import { Routes, Route, Navigate } from "react-router-dom";
+import { Toaster } from "react-hot-toast";
+import { useAuth } from "./hooks/useAuth";
+import LoginScreen from "./components/Auth/LoginScreen";
+import ProfileSetup from "./components/Auth/ProfileSetup";
+import Dashboard from "./components/Dashboard/Dashboard";
 
 function App() {
   const { user, loading, isNewUser } = useAuth();
@@ -16,27 +17,31 @@ function App() {
     );
   }
 
-  if (!user) {
-    return (
-      <>
-        <LoginScreen />
-        <Toaster position="top-right" />
-      </>
-    );
-  }
-
-  if (isNewUser) {
-    return (
-      <>
-        <ProfileSetup />
-        <Toaster position="top-right" />
-      </>
-    );
-  }
-
   return (
     <>
-      <Dashboard />
+      <Routes>
+        {/* Login route */}
+        <Route
+          path="/"
+          element={!user ? <LoginScreen /> : <Navigate to="/dashboard" replace />}
+        />
+
+        {/* Profile setup route for new users */}
+        <Route
+          path="/profile-setup"
+          element={user && isNewUser ? <ProfileSetup /> : <Navigate to="/dashboard" replace />}
+        />
+
+        {/* Dashboard route for logged-in users */}
+        <Route
+          path="/dashboard"
+          element={user ? <Dashboard /> : <Navigate to="/" replace />}
+        />
+
+        {/* Fallback for unknown routes */}
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+
       <Toaster position="top-right" />
     </>
   );
