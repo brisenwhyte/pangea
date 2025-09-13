@@ -1,11 +1,51 @@
 // LoginScreen.tsx - Production version with debug capabilities
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Wallet, AlertCircle, Loader, Info, CheckCircle, XCircle } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth'; // Your actual useAuth hook
 
 const LoginScreen: React.FC = () => {
   const { signInWithGoogle, authLoading, authError, clearAuthError } = useAuth();
-  const [showDebugInfo, setShowDebugInfo] = useState(false); // Set to false for production
+  const [showDebugInfo, setShowDebugInfo] = useState(false);
+  const [isRedirecting, setIsRedirecting] = useState(false);
+
+  // Check if we're returning from a redirect login
+  useEffect(() => {
+    const isRedirectLogin = sessionStorage.getItem('isRedirectLogin');
+    if (isRedirectLogin) {
+      setIsRedirecting(true);
+    }
+  }, []);
+
+  const handleSignIn = async () => {
+    console.log('🖱️ Sign in button clicked');
+    
+    if (authError) {
+      clearAuthError();
+    }
+    
+    try {
+      await signInWithGoogle();
+    } catch (error) {
+      console.error('❌ Sign in failed:', error);
+      sessionStorage.removeItem('isRedirectLogin');
+      setIsRedirecting(false);
+    }
+  };
+
+  // Show different message if we're in the middle of a redirect flow
+  if (isRedirecting) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-blue-50 flex items-center justify-center p-4">
+        <div className="max-w-md w-full text-center">
+          <div className="bg-white rounded-2xl shadow-xl p-8">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4"></div>
+            <h2 className="text-xl font-semibold text-gray-800 mb-2">Completing Login</h2>
+            <p className="text-gray-600">Please wait while we complete your authentication...</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   // Comprehensive device and environment info
   const getEnvironmentInfo = () => {
@@ -56,22 +96,6 @@ const LoginScreen: React.FC = () => {
     if (/windows phone/.test(ua)) return 'Windows Phone';
     if (envInfo.isTouchDevice && parseInt(envInfo.screenSize.split('x')[0]) < 768) return 'Mobile (Generic)';
     return 'Desktop/Laptop';
-  };
-
-  const handleSignIn = async () => {
-    console.log('🖱️ Sign in button clicked');
-    console.log('📊 Environment Info:', envInfo);
-    console.log('📱 Device Type:', getDeviceType());
-    
-    if (authError) {
-      clearAuthError();
-    }
-    
-    try {
-      await signInWithGoogle();
-    } catch (error) {
-      console.error('❌ Sign in failed:', error);
-    }
   };
 
   return (

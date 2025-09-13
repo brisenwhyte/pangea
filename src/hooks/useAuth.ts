@@ -9,6 +9,8 @@ import {
   setPersistence,
   browserLocalPersistence,
   GoogleAuthProvider,
+  isSignInWithEmailLink,
+  signInWithEmailLink
 } from "firebase/auth";
 import { doc, getDoc, setDoc } from "firebase/firestore";
 import { auth, googleProvider, db } from "../config/firebase";
@@ -29,26 +31,38 @@ export const useAuth = () => {
     );
   };
 
-  // 🔹 Handle redirect result once after returning from Google
+  // 🔹 Handle redirect result after returning from Google
   useEffect(() => {
-    const checkRedirect = async () => {
+    const handleRedirectResult = async () => {
       try {
+        setAuthLoading(true);
         const result = await getRedirectResult(auth);
+        
         if (result?.user) {
+          console.log("Redirect result user found:", result.user.uid);
           await processUser(result.user, true);
+        } else {
+          console.log("No redirect result found");
         }
       } catch (error: any) {
         console.error("Redirect error:", error);
-        setAuthError(error.message);
+        setAuthError(error.message || "Authentication failed");
+      } finally {
+        setAuthLoading(false);
       }
     };
 
-    checkRedirect();
+    // Only handle redirect on mobile devices
+    if (isMobileDevice()) {
+      handleRedirectResult();
+    }
   }, []);
 
   // 🔹 Auth state listener (covers refresh + popup login)
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+      console.log("Auth state changed:", firebaseUser?.uid);
+      
       if (firebaseUser) {
         await processUser(firebaseUser, false);
       } else {
@@ -64,13 +78,17 @@ export const useAuth = () => {
   // 🔹 Common user processing
   const processUser = async (firebaseUser: FirebaseUser, fromRedirect: boolean) => {
     try {
+      console.log("Processing user:", firebaseUser.uid, "fromRedirect:", fromRedirect);
+      
       const userDocRef = doc(db, "users", firebaseUser.uid);
       const userDoc = await getDoc(userDocRef);
 
       if (userDoc.exists()) {
+        console.log("User document exists");
         setUser(userDoc.data() as User);
         setIsNewUser(false);
       } else {
+        console.log("User document doesn't exist, creating new user");
         const tempUser: User = {
           uid: firebaseUser.uid,
           email: firebaseUser.email || "",
@@ -84,6 +102,7 @@ export const useAuth = () => {
         // Only save new users if it's fresh login
         if (fromRedirect) {
           await setDoc(userDocRef, tempUser);
+          console.log("New user saved to database");
         }
       }
     } catch (err) {
@@ -101,8 +120,12 @@ export const useAuth = () => {
       await setPersistence(auth, browserLocalPersistence);
 
       if (isMobileDevice()) {
+        console.log("Mobile device detected, using redirect flow");
+        // Store that we're initiating a redirect login
+        sessionStorage.setItem('isRedirectLogin', 'true');
         await signInWithRedirect(auth, googleProvider);
       } else {
+        console.log("Desktop device detected, using popup flow");
         const result = await signInWithPopup(auth, googleProvider);
         if (result?.user) {
           await processUser(result.user, true);
@@ -111,8 +134,13 @@ export const useAuth = () => {
     } catch (error: any) {
       console.error("Auth error:", error);
       setAuthError(error.message || "Authentication failed");
+      sessionStorage.removeItem('isRedirectLogin');
     } finally {
-      setAuthLoading(false);
+      // Only set loading to false for popup flow
+      // For redirect flow, we'll handle loading state in the redirect result handler
+      if (!isMobileDevice()) {
+        setAuthLoading(false);
+      }
     }
   };
 
@@ -121,6 +149,7 @@ export const useAuth = () => {
     await signOut(auth);
     setUser(null);
     setIsNewUser(false);
+    sessionStorage.removeItem('isRedirectLogin');
   };
 
   // 🔹 Complete profile
