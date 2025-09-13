@@ -1,12 +1,17 @@
-// LoginScreen.tsx - Production version with debug capabilities
 import React, { useState, useEffect } from 'react';
 import { Wallet, AlertCircle, Loader, Info, CheckCircle, XCircle } from 'lucide-react';
-import { useAuth } from '../../hooks/useAuth'; // Your actual useAuth hook
+import { useAuth } from '../../hooks/useAuth';
 
 const LoginScreen: React.FC = () => {
   const { signInWithGoogle, authLoading, authError, clearAuthError } = useAuth();
   const [showDebugInfo, setShowDebugInfo] = useState(false);
   const [isRedirecting, setIsRedirecting] = useState(false);
+
+  // 🔹 Utility: detect mobile device (same as in useAuth)
+  const isMobileDevice = () => {
+    const ua = navigator.userAgent.toLowerCase();
+    return /android|webos|iphone|ipad|ipod|blackberry|iemobile|opera mini/i.test(ua);
+  };
 
   // Check if we're returning from a redirect login
   useEffect(() => {
@@ -14,40 +19,23 @@ const LoginScreen: React.FC = () => {
     if (isRedirectLogin) {
       setIsRedirecting(true);
     }
+
+    // Check if we're returning from a redirect but stuck
+    const urlParams = new URLSearchParams(window.location.search);
+    const hasAuthParams = urlParams.has('apiKey') || window.location.href.includes('__/auth/handler');
+    
+    if (isRedirectLogin && hasAuthParams) {
+      // We're returning from redirect but something went wrong
+      console.log("Detected return from redirect but authentication didn't complete");
+      
+      // Try to manually trigger auth state check after a delay
+      setTimeout(() => {
+        sessionStorage.removeItem('isRedirectLogin');
+        window.location.reload();
+      }, 2000);
+    }
   }, []);
 
-  const handleSignIn = async () => {
-    console.log('🖱️ Sign in button clicked');
-    
-    if (authError) {
-      clearAuthError();
-    }
-    
-    try {
-      await signInWithGoogle();
-    } catch (error) {
-      console.error('❌ Sign in failed:', error);
-      sessionStorage.removeItem('isRedirectLogin');
-      setIsRedirecting(false);
-    }
-  };
-
-  // Show different message if we're in the middle of a redirect flow
-  if (isRedirecting) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-blue-50 flex items-center justify-center p-4">
-        <div className="max-w-md w-full text-center">
-          <div className="bg-white rounded-2xl shadow-xl p-8">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4"></div>
-            <h2 className="text-xl font-semibold text-gray-800 mb-2">Completing Login</h2>
-            <p className="text-gray-600">Please wait while we complete your authentication...</p>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // Comprehensive device and environment info
   const getEnvironmentInfo = () => {
     return {
       userAgent: navigator.userAgent,
@@ -97,6 +85,56 @@ const LoginScreen: React.FC = () => {
     if (envInfo.isTouchDevice && parseInt(envInfo.screenSize.split('x')[0]) < 768) return 'Mobile (Generic)';
     return 'Desktop/Laptop';
   };
+
+  const handleSignIn = async () => {
+    console.log('🖱️ Sign in button clicked');
+    console.log('📊 Environment Info:', envInfo);
+    console.log('📱 Device Type:', getDeviceType());
+    
+    if (authError) {
+      clearAuthError();
+    }
+    
+    try {
+      await signInWithGoogle();
+      
+      // For mobile devices, show a message that we're redirecting
+      if (isMobileDevice()) {
+        setIsRedirecting(true);
+        // Set a timeout to reset if we get stuck
+        setTimeout(() => {
+          if (sessionStorage.getItem('isRedirectLogin')) {
+            console.log("Redirect seems to have failed, resetting state");
+            sessionStorage.removeItem('isRedirectLogin');
+            setIsRedirecting(false);
+            // Use clearAuthError to show a message
+            clearAuthError();
+            // You might want to set a custom error state here
+          }
+        }, 10000); // 10 second timeout
+      }
+    } catch (error) {
+      console.error('❌ Sign in failed:', error);
+      sessionStorage.removeItem('isRedirectLogin');
+      setIsRedirecting(false);
+    }
+  };
+
+  // Show different message if we're in the middle of a redirect flow
+  if (isRedirecting) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-blue-50 flex items-center justify-center p-4">
+        <div className="max-w-md w-full text-center">
+          <div className="bg-white rounded-2xl shadow-xl p-8">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4"></div>
+            <h2 className="text-xl font-semibold text-gray-800 mb-2">Completing Login</h2>
+            <p className="text-gray-600">Please wait while we complete your authentication...</p>
+            <p className="text-sm text-gray-500 mt-4">If this takes too long, try refreshing the page.</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-blue-50 flex items-center justify-center p-4">
@@ -232,6 +270,7 @@ const LoginScreen: React.FC = () => {
                 <div className="mt-4 pt-4 border-t border-gray-200 text-gray-500">
                   <p>📱 Mobile devices use redirect flow</p>
                   <p>🖥️ Desktop uses popup flow</p>
+                  <p>📱 Mobile detected: {isMobileDevice() ? 'Yes' : 'No'}</p>
                 </div>
               </div>
             )}

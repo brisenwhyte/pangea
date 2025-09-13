@@ -3,11 +3,11 @@ import {
   getAuth, 
   GoogleAuthProvider, 
   setPersistence, 
-  browserLocalPersistence 
+  browserLocalPersistence,
+  inMemoryPersistence
 } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
 
-// Your web app's Firebase configuration
 const firebaseConfig = {
   apiKey: "AIzaSyCMr9xN0QTxALxlNjtlYrfm7j726H8HQY4",
   authDomain: "pangea-aa005.firebaseapp.com",
@@ -21,31 +21,40 @@ const firebaseConfig = {
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
 
-// Initialize Firebase Authentication and get a reference to the service
+// Initialize Firebase Authentication
 const auth = getAuth(app);
 
-// Set persistence to local storage
-setPersistence(auth, browserLocalPersistence)
-  .then(() => {
+// Set persistence with better error handling
+const initPersistence = async () => {
+  try {
+    // Try to use local storage first
+    await setPersistence(auth, browserLocalPersistence);
     console.log("Auth persistence set to local storage");
-  })
-  .catch((error) => {
-    console.error("Error setting auth persistence:", error);
-  });
+  } catch (error) {
+    console.warn("Local storage not available, using in-memory persistence");
+    try {
+      await setPersistence(auth, inMemoryPersistence);
+    } catch (err) {
+      console.error("Failed to set any persistence:", err);
+    }
+  }
+};
 
-// Configure Google Auth Provider
+initPersistence();
+
+// Configure Google Auth Provider for better mobile compatibility
 const googleProvider = new GoogleAuthProvider();
-// Add additional scopes if needed
 googleProvider.addScope('profile');
 googleProvider.addScope('email');
-// Optional: Force account selection every time
-// googleProvider.setCustomParameters({ prompt: 'select_account' });
 
-// Initialize Cloud Firestore and get a reference to the service
+// Important: Set custom parameters for mobile devices
+googleProvider.setCustomParameters({
+  prompt: 'select_account', // Force account selection every time
+  display: 'touch' // Optimize for touch devices
+});
+
+// Initialize Cloud Firestore
 const db = getFirestore(app);
 
-// Export initialized services
 export { auth, googleProvider, db };
-
-// Optional: Export the app instance if needed elsewhere
 export default app;

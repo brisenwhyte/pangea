@@ -9,8 +9,6 @@ import {
   setPersistence,
   browserLocalPersistence,
   GoogleAuthProvider,
-  isSignInWithEmailLink,
-  signInWithEmailLink
 } from "firebase/auth";
 import { doc, getDoc, setDoc } from "firebase/firestore";
 import { auth, googleProvider, db } from "../config/firebase";
@@ -26,36 +24,50 @@ export const useAuth = () => {
   // 🔹 Utility: detect mobile device
   const isMobileDevice = () => {
     const ua = navigator.userAgent.toLowerCase();
-    return /android|webos|iphone|ipad|ipod|blackberry|iemobile|opera mini/i.test(
-      ua
-    );
+    return /android|webos|iphone|ipad|ipod|blackberry|iemobile|opera mini/i.test(ua);
+  };
+
+  // 🔹 Check if we're returning from a redirect
+  const isRedirectedBack = () => {
+    return window.location.href.includes('__/auth/handler');
   };
 
   // 🔹 Handle redirect result after returning from Google
   useEffect(() => {
     const handleRedirectResult = async () => {
+      // Only handle redirect on mobile devices or if we detect we're redirected back
+      if (!isMobileDevice() && !isRedirectedBack()) return;
+      
       try {
+        console.log("Checking for redirect result...");
         setAuthLoading(true);
+        
+        // Add a small delay to ensure Firebase is ready
+        await new Promise(resolve => setTimeout(resolve, 500));
+        
         const result = await getRedirectResult(auth);
+        console.log("Redirect result:", result);
         
         if (result?.user) {
-          console.log("Redirect result user found:", result.user.uid);
+          console.log("Redirect user found:", result.user.uid);
           await processUser(result.user, true);
+          // Clear any redirect flags
+          sessionStorage.removeItem('isRedirectLogin');
+          // Clear the URL parameters to prevent re-triggering
+          window.history.replaceState({}, document.title, window.location.pathname);
         } else {
-          console.log("No redirect result found");
+          console.log("No user in redirect result");
+          setAuthLoading(false);
         }
       } catch (error: any) {
         console.error("Redirect error:", error);
         setAuthError(error.message || "Authentication failed");
-      } finally {
         setAuthLoading(false);
+        sessionStorage.removeItem('isRedirectLogin');
       }
     };
 
-    // Only handle redirect on mobile devices
-    if (isMobileDevice()) {
-      handleRedirectResult();
-    }
+    handleRedirectResult();
   }, []);
 
   // 🔹 Auth state listener (covers refresh + popup login)
@@ -99,15 +111,15 @@ export const useAuth = () => {
         setUser(tempUser);
         setIsNewUser(true);
 
-        // Only save new users if it's fresh login
-        if (fromRedirect) {
-          await setDoc(userDocRef, tempUser);
-          console.log("New user saved to database");
-        }
+        // Save new user to database
+        await setDoc(userDocRef, tempUser);
+        console.log("New user saved to database");
       }
     } catch (err) {
       console.error("Error processing user:", err);
       setAuthError("Failed to load user profile");
+    } finally {
+      setAuthLoading(false);
     }
   };
 
@@ -124,23 +136,20 @@ export const useAuth = () => {
         // Store that we're initiating a redirect login
         sessionStorage.setItem('isRedirectLogin', 'true');
         await signInWithRedirect(auth, googleProvider);
+        // Don't set authLoading to false here - we're navigating away
       } else {
         console.log("Desktop device detected, using popup flow");
         const result = await signInWithPopup(auth, googleProvider);
         if (result?.user) {
           await processUser(result.user, true);
         }
+        setAuthLoading(false);
       }
     } catch (error: any) {
       console.error("Auth error:", error);
       setAuthError(error.message || "Authentication failed");
       sessionStorage.removeItem('isRedirectLogin');
-    } finally {
-      // Only set loading to false for popup flow
-      // For redirect flow, we'll handle loading state in the redirect result handler
-      if (!isMobileDevice()) {
-        setAuthLoading(false);
-      }
+      setAuthLoading(false);
     }
   };
 
