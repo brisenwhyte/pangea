@@ -1,7 +1,13 @@
 import { initializeApp } from 'firebase/app';
-import { getAuth, GoogleAuthProvider } from 'firebase/auth';
+import { 
+  getAuth, 
+  GoogleAuthProvider, 
+  setPersistence, 
+  browserLocalPersistence 
+} from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
 
+// Your web app's Firebase configuration
 const firebaseConfig = {
   apiKey: "AIzaSyCMr9xN0QTxALxlNjtlYrfm7j726H8HQY4",
   authDomain: "pangea-aa005.firebaseapp.com",
@@ -16,8 +22,30 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 
 // Initialize Firebase Authentication and get a reference to the service
-export const auth = getAuth(app);
-export const googleProvider = new GoogleAuthProvider();
+const auth = getAuth(app);
+
+// Set persistence to local storage
+setPersistence(auth, browserLocalPersistence)
+  .then(() => {
+    console.log("Auth persistence set to local storage");
+  })
+  .catch((error) => {
+    console.error("Error setting auth persistence:", error);
+  });
+
+// Configure Google Auth Provider
+const googleProvider = new GoogleAuthProvider();
+// Add additional scopes if needed
+googleProvider.addScope('profile');
+googleProvider.addScope('email');
+// Optional: Force account selection every time
+// googleProvider.setCustomParameters({ prompt: 'select_account' });
 
 // Initialize Cloud Firestore and get a reference to the service
-export const db = getFirestore(app);
+const db = getFirestore(app);
+
+// Export initialized services
+export { auth, googleProvider, db };
+
+// Optional: Export the app instance if needed elsewhere
+export default app;
