@@ -21,7 +21,7 @@ interface UserData {
   displayName: string | null;
   photoURL: string | null;
   createdAt?: number;
-  currency?: string; // 👈 Add this
+  currency?: string; 
 }
 
 export function useAuth() {
@@ -30,30 +30,41 @@ export function useAuth() {
   const [error, setError] = useState<string | null>(null);
 
   // --- normalize firebase user into our user type ---
-  const processUser = async (fbUser: FirebaseUser, isNew?: boolean) => {
-    if (!fbUser) return;
+const processUser = async (fbUser: FirebaseUser, isNew?: boolean) => {
+  if (!fbUser) return;
 
-    const userData: UserData = {
-      name:fbUser.displayName,
-      uid: fbUser.uid,
-      email: fbUser.email,
-      displayName: fbUser.displayName,
-      photoURL: fbUser.photoURL,
-      createdAt: Date.now(),
-    };
+  // First, try to get the user document from Firestore
+  const userDocRef = doc(db, "users", fbUser.uid);
+  const userDoc = await getDoc(userDocRef);
+  
+  let userCurrency = "USD"; // Default currency
+  
+  if (userDoc.exists()) {
+    // If user document exists, get the currency from Firestore
+    userCurrency = userDoc.data().currency || "USD";
+  }
 
-    if (isNew) {
-      const ref = doc(db, "users", fbUser.uid);
-      const snap = await getDoc(ref);
-      if (!snap.exists()) {
-        await setDoc(ref, userData);
-        console.log("🆕 Created new user doc:", fbUser.uid);
-      }
-    }
-
-    setUser(userData);
-    console.log("✅ User processed:", fbUser.uid);
+  const userData: UserData = {
+    name: fbUser.displayName,
+    uid: fbUser.uid,
+    email: fbUser.email,
+    displayName: fbUser.displayName,
+    photoURL: fbUser.photoURL,
+    createdAt: Date.now(),
+    currency: userCurrency, // Use the currency from Firestore
   };
+
+  if (isNew) {
+    const snap = await getDoc(userDocRef);
+    if (!snap.exists()) {
+      await setDoc(userDocRef, userData);
+      console.log("🆕 Created new user doc:", fbUser.uid);
+    }
+  }
+
+  setUser(userData);
+  console.log("✅ User processed:", fbUser.uid);
+};
 
   // --- sign in with Google ---
   const signInWithGoogle = useCallback(async () => {
@@ -123,18 +134,21 @@ export function useAuth() {
   }, []);
 
   // --- listen to auth state changes ---
-  useEffect(() => {
-    const unsub = onAuthStateChanged(auth, async (fbUser) => {
-      if (fbUser) {
-        console.log("📡 Auth state changed: user", fbUser.uid);
-        await processUser(fbUser);
-      } else {
-        console.log("📡 Auth state changed: no user");
-        setUser(null);
-      }
-    });
-    return () => unsub();
-  }, []);
+useEffect(() => {
+  const unsub = onAuthStateChanged(auth, async (fbUser) => {
+    if (fbUser) {
+      console.log("📡 Auth state changed: user", fbUser.uid);
+      await processUser(fbUser);
+    } else {
+      console.log("📡 Auth state changed: no user");
+      setUser(null);
+    }
+    // ✅ Always clear loading once auth state is resolved
+    setLoading(false);
+  });
+
+  return () => unsub();
+}, []);
 
   // --- sign out ---
   const logout = async () => {

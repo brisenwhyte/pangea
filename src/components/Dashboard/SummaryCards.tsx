@@ -3,6 +3,7 @@ import { motion } from 'framer-motion';
 import { TrendingUp, TrendingDown, Wallet, Calendar, Loader2 } from 'lucide-react';
 import { Transaction } from '../../types';
 import { useAuth } from '../../hooks/useAuth';
+import { getCurrencySymbol } from '../../config/categories';
 
 interface SummaryCardsProps {
   transactions: Transaction[];
@@ -12,12 +13,9 @@ interface SummaryCardsProps {
 const SummaryCards: React.FC<SummaryCardsProps> = ({ transactions, loading = false }) => {
   const { user } = useAuth();
 
-  const formatAmount = (amount: number, currency: string) => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: currency
-    }).format(Math.abs(amount));
-  };
+const formatAmount = (amount: number) => {
+  return `${getCurrencySymbol(user?.currency || 'USD')}${Math.abs(amount).toFixed(2)}`;
+};
 
   const summaryData = useMemo(() => {
     const now = new Date();
@@ -112,14 +110,14 @@ const SummaryCards: React.FC<SummaryCardsProps> = ({ transactions, loading = fal
             <div className="flex items-center justify-between">
               <span className="text-sm text-gray-600">Received</span>
               <span className="text-sm font-medium text-green-600">
-                +{formatAmount(card.data.received, user?.currency || 'USD')}
+                +{formatAmount(card.data.received)}
               </span>
             </div>
             
             <div className="flex items-center justify-between">
               <span className="text-sm text-gray-600">Spent</span>
               <span className="text-sm font-medium text-red-600">
-                -{formatAmount(card.data.spent, user?.currency || 'USD')}
+                -{formatAmount(card.data.spent)}
               </span>
             </div>
             
@@ -137,7 +135,7 @@ const SummaryCards: React.FC<SummaryCardsProps> = ({ transactions, loading = fal
                   card.data.net >= 0 ? 'text-green-600' : 'text-red-600'
                 }`}>
                   {card.data.net >= 0 ? '+' : ''}
-                  {formatAmount(card.data.net, user?.currency || 'USD')}
+                  {formatAmount(card.data.net)}
                 </span>
               </div>
             </div>

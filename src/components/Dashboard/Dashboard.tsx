@@ -70,7 +70,7 @@ const Dashboard: React.FC = () => {
           </div>
 
           {/* Transaction List - Full Width */}
-          <div className="w-full">
+          <div className="h-96 overflow-y-auto custom-scrollbar">
             <TransactionList 
               transactions={transactions}
               selectedDate={selectedDate || undefined}
@@ -78,6 +78,22 @@ const Dashboard: React.FC = () => {
           </div>
         </motion.div>
       </div>
+      <style>{`
+        .custom-scrollbar::-webkit-scrollbar {
+          width: 6px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+          background: #f1f1f1;
+          border-radius: 10px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+          background: #c5c5c5;
+          border-radius: 10px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+          background: #a8a8a8;
+        }
+      `}</style>
     </div>
   );
 };
