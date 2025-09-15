@@ -8,7 +8,7 @@ import {
   signInWithPopup,
   setPersistence,
   browserLocalPersistence,
-  GoogleAuthProvider,
+  browserSessionPersistence,
 } from "firebase/auth";
 import { doc, getDoc, setDoc } from "firebase/firestore";
 import { auth, googleProvider, db } from "../config/firebase";
@@ -27,43 +27,38 @@ export const useAuth = () => {
     return /android|webos|iphone|ipad|ipod|blackberry|iemobile|opera mini/i.test(ua);
   };
 
-  // 🔹 Check if we're returning from a redirect
-  const isRedirectedBack = () => {
-    return window.location.href.includes('__/auth/handler');
-  };
-
   // 🔹 Handle redirect result after returning from Google
   useEffect(() => {
     const handleRedirectResult = async () => {
-      // Only handle redirect on mobile devices or if we detect we're redirected back
-      if (!isMobileDevice() && !isRedirectedBack()) return;
-      
       try {
         console.log("Checking for redirect result...");
         setAuthLoading(true);
-        
-        // Add a small delay to ensure Firebase is ready
-        await new Promise(resolve => setTimeout(resolve, 500));
-        
+
+        // Set persistence before checking result
+        await setPersistence(
+          auth,
+          isMobileDevice() ? browserSessionPersistence : browserLocalPersistence
+        );
+
         const result = await getRedirectResult(auth);
         console.log("Redirect result:", result);
-        
+
         if (result?.user) {
-          console.log("Redirect user found:", result.user.uid);
+          console.log("✅ Redirect user found:", result.user.uid);
           await processUser(result.user, true);
-          // Clear any redirect flags
-          sessionStorage.removeItem('isRedirectLogin');
-          // Clear the URL parameters to prevent re-triggering
+
+          // Clean up flags & URL
+          sessionStorage.removeItem("isRedirectLogin");
           window.history.replaceState({}, document.title, window.location.pathname);
         } else {
-          console.log("No user in redirect result");
-          setAuthLoading(false);
+          console.log("ℹ️ No user in redirect result");
         }
       } catch (error: any) {
-        console.error("Redirect error:", error);
+        console.error("❌ Redirect error:", error);
         setAuthError(error.message || "Authentication failed");
+        sessionStorage.removeItem("isRedirectLogin");
+      } finally {
         setAuthLoading(false);
-        sessionStorage.removeItem('isRedirectLogin');
       }
     };
 
@@ -74,7 +69,7 @@ export const useAuth = () => {
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       console.log("Auth state changed:", firebaseUser?.uid);
-      
+
       if (firebaseUser) {
         await processUser(firebaseUser, false);
       } else {
@@ -91,7 +86,7 @@ export const useAuth = () => {
   const processUser = async (firebaseUser: FirebaseUser, fromRedirect: boolean) => {
     try {
       console.log("Processing user:", firebaseUser.uid, "fromRedirect:", fromRedirect);
-      
+
       const userDocRef = doc(db, "users", firebaseUser.uid);
       const userDoc = await getDoc(userDocRef);
 
@@ -129,16 +124,15 @@ export const useAuth = () => {
     setAuthError(null);
 
     try {
-      await setPersistence(auth, browserLocalPersistence);
-
       if (isMobileDevice()) {
-        console.log("Mobile device detected, using redirect flow");
-        // Store that we're initiating a redirect login
-        sessionStorage.setItem('isRedirectLogin', 'true');
+        console.log("📱 Mobile device detected, using redirect flow");
+        await setPersistence(auth, browserSessionPersistence);
+        sessionStorage.setItem("isRedirectLogin", "true");
         await signInWithRedirect(auth, googleProvider);
-        // Don't set authLoading to false here - we're navigating away
+        // Don't set authLoading to false — page will redirect
       } else {
-        console.log("Desktop device detected, using popup flow");
+        console.log("💻 Desktop device detected, using popup flow");
+        await setPersistence(auth, browserLocalPersistence);
         const result = await signInWithPopup(auth, googleProvider);
         if (result?.user) {
           await processUser(result.user, true);
@@ -146,9 +140,9 @@ export const useAuth = () => {
         setAuthLoading(false);
       }
     } catch (error: any) {
-      console.error("Auth error:", error);
+      console.error("❌ Auth error:", error);
       setAuthError(error.message || "Authentication failed");
-      sessionStorage.removeItem('isRedirectLogin');
+      sessionStorage.removeItem("isRedirectLogin");
       setAuthLoading(false);
     }
   };
@@ -158,7 +152,7 @@ export const useAuth = () => {
     await signOut(auth);
     setUser(null);
     setIsNewUser(false);
-    sessionStorage.removeItem('isRedirectLogin');
+    sessionStorage.removeItem("isRedirectLogin");
   };
 
   // 🔹 Complete profile
