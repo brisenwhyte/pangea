@@ -1,4 +1,5 @@
-import { useState, useEffect } from "react";
+// useAuth.ts
+import { useState, useEffect, useCallback } from "react";
 import {
   User as FirebaseUser,
   onAuthStateChanged,
@@ -7,178 +8,141 @@ import {
   signOut,
   signInWithPopup,
   setPersistence,
-  browserLocalPersistence,
-  browserSessionPersistence,
+  indexedDBLocalPersistence,
+  GoogleAuthProvider,
 } from "firebase/auth";
 import { doc, getDoc, setDoc } from "firebase/firestore";
-import { auth, googleProvider, db } from "../config/firebase";
-import { User } from "../types";
+import { auth, db } from "../config/firebase";
 
-export const useAuth = () => {
-  const [user, setUser] = useState<User | null>(null);
+interface UserData {
+  uid: string;
+  email: string | null;
+  displayName: string | null;
+  photoURL: string | null;
+  createdAt?: number;
+}
+
+export function useAuth() {
+  const [user, setUser] = useState<UserData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [isNewUser, setIsNewUser] = useState(false);
-  const [authError, setAuthError] = useState<string | null>(null);
-  const [authLoading, setAuthLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  // 🔹 Utility: detect mobile device
-  const isMobileDevice = () => {
-    const ua = navigator.userAgent.toLowerCase();
-    return /android|webos|iphone|ipad|ipod|blackberry|iemobile|opera mini/i.test(ua);
+  // --- normalize firebase user into our user type ---
+  const processUser = async (fbUser: FirebaseUser, isNew?: boolean) => {
+    if (!fbUser) return;
+
+    const userData: UserData = {
+      uid: fbUser.uid,
+      email: fbUser.email,
+      displayName: fbUser.displayName,
+      photoURL: fbUser.photoURL,
+      createdAt: Date.now(),
+    };
+
+    if (isNew) {
+      const ref = doc(db, "users", fbUser.uid);
+      const snap = await getDoc(ref);
+      if (!snap.exists()) {
+        await setDoc(ref, userData);
+        console.log("🆕 Created new user doc:", fbUser.uid);
+      }
+    }
+
+    setUser(userData);
+    console.log("✅ User processed:", fbUser.uid);
   };
 
-  // 🔹 Handle redirect result after returning from Google
-  useEffect(() => {
-    const handleRedirectResult = async () => {
-      try {
-        console.log("Checking for redirect result...");
-        setAuthLoading(true);
+  // --- sign in with Google ---
+  const signInWithGoogle = useCallback(async () => {
+    setError(null);
+    setLoading(true);
+    const provider = new GoogleAuthProvider();
 
-        // Set persistence before checking result
-        await setPersistence(
-          auth,
-          isMobileDevice() ? browserSessionPersistence : browserLocalPersistence
-        );
+    try {
+      // Force persistence to IndexedDB for Safari/iOS safety
+      await setPersistence(auth, indexedDBLocalPersistence);
+      console.log("🔒 Auth persistence set to IndexedDB");
+
+      try {
+        console.log("🪟 Trying popup flow first...");
+        const result = await signInWithPopup(auth, provider);
+        if (result.user) {
+          await processUser(result.user, true);
+        }
+      } catch (popupError: any) {
+        console.warn("⚠️ Popup blocked, falling back to redirect:", popupError?.message);
+        sessionStorage.setItem("isRedirectLogin", "true");
+        await signInWithRedirect(auth, provider);
+      }
+    } catch (err: any) {
+      console.error("❌ Sign in failed:", err);
+      setError(err.message || "Authentication error");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  // --- handle redirect result (if popup blocked) ---
+  useEffect(() => {
+    const handleRedirect = async () => {
+      if (sessionStorage.getItem("redirectHandled")) {
+        console.log("⏭️ Redirect result already handled, skipping");
+        return;
+      }
+      sessionStorage.setItem("redirectHandled", "true");
+
+      try {
+        console.log("🔄 Checking redirect result...");
+        setLoading(true);
+
+        await setPersistence(auth, indexedDBLocalPersistence);
+        console.log("🔒 Auth persistence set to IndexedDB");
 
         const result = await getRedirectResult(auth);
-        console.log("Redirect result:", result);
-
         if (result?.user) {
           console.log("✅ Redirect user found:", result.user.uid);
           await processUser(result.user, true);
 
-          // Clean up flags & URL
           sessionStorage.removeItem("isRedirectLogin");
           window.history.replaceState({}, document.title, window.location.pathname);
         } else {
-          console.log("ℹ️ No user in redirect result");
+          console.log("ℹ️ No user from redirect result");
         }
-      } catch (error: any) {
-        console.error("❌ Redirect error:", error);
-        setAuthError(error.message || "Authentication failed");
-        sessionStorage.removeItem("isRedirectLogin");
+      } catch (err: any) {
+        console.error("❌ Redirect error:", err);
+        setError(err.message || "Redirect login failed");
       } finally {
-        setAuthLoading(false);
+        setLoading(false);
       }
     };
 
-    handleRedirectResult();
+    handleRedirect();
   }, []);
 
-  // 🔹 Auth state listener (covers refresh + popup login)
+  // --- listen to auth state changes ---
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
-      console.log("Auth state changed:", firebaseUser?.uid);
-
-      if (firebaseUser) {
-        await processUser(firebaseUser, false);
+    const unsub = onAuthStateChanged(auth, async (fbUser) => {
+      if (fbUser) {
+        console.log("📡 Auth state changed: user", fbUser.uid);
+        await processUser(fbUser);
       } else {
+        console.log("📡 Auth state changed: no user");
         setUser(null);
-        setIsNewUser(false);
       }
-      setLoading(false);
     });
-
-    return () => unsubscribe();
+    return () => unsub();
   }, []);
 
-  // 🔹 Common user processing
-  const processUser = async (firebaseUser: FirebaseUser, fromRedirect: boolean) => {
+  // --- sign out ---
+  const logout = async () => {
     try {
-      console.log("Processing user:", firebaseUser.uid, "fromRedirect:", fromRedirect);
-
-      const userDocRef = doc(db, "users", firebaseUser.uid);
-      const userDoc = await getDoc(userDocRef);
-
-      if (userDoc.exists()) {
-        console.log("User document exists");
-        setUser(userDoc.data() as User);
-        setIsNewUser(false);
-      } else {
-        console.log("User document doesn't exist, creating new user");
-        const tempUser: User = {
-          uid: firebaseUser.uid,
-          email: firebaseUser.email || "",
-          name: firebaseUser.displayName || "",
-          currency: "USD",
-          photoURL: firebaseUser.photoURL || undefined,
-        };
-        setUser(tempUser);
-        setIsNewUser(true);
-
-        // Save new user to database
-        await setDoc(userDocRef, tempUser);
-        console.log("New user saved to database");
-      }
-    } catch (err) {
-      console.error("Error processing user:", err);
-      setAuthError("Failed to load user profile");
-    } finally {
-      setAuthLoading(false);
+      await signOut(auth);
+      console.log("👋 Signed out");
+    } catch (err: any) {
+      console.error("❌ Sign out failed:", err);
+      setError(err.message || "Logout failed");
     }
   };
 
-  // 🔹 Sign in
-  const signInWithGoogle = async () => {
-    setAuthLoading(true);
-    setAuthError(null);
-
-    try {
-      if (isMobileDevice()) {
-        console.log("📱 Mobile device detected, using redirect flow");
-        await setPersistence(auth, browserSessionPersistence);
-        sessionStorage.setItem("isRedirectLogin", "true");
-        await signInWithRedirect(auth, googleProvider);
-        // Don't set authLoading to false — page will redirect
-      } else {
-        console.log("💻 Desktop device detected, using popup flow");
-        await setPersistence(auth, browserLocalPersistence);
-        const result = await signInWithPopup(auth, googleProvider);
-        if (result?.user) {
-          await processUser(result.user, true);
-        }
-        setAuthLoading(false);
-      }
-    } catch (error: any) {
-      console.error("❌ Auth error:", error);
-      setAuthError(error.message || "Authentication failed");
-      sessionStorage.removeItem("isRedirectLogin");
-      setAuthLoading(false);
-    }
-  };
-
-  // 🔹 Sign out
-  const signOutUser = async () => {
-    await signOut(auth);
-    setUser(null);
-    setIsNewUser(false);
-    sessionStorage.removeItem("isRedirectLogin");
-  };
-
-  // 🔹 Complete profile
-  const completeProfile = async (name: string, currency: string) => {
-    if (!user) return;
-
-    const userData: User = {
-      ...user,
-      name,
-      currency,
-    };
-
-    await setDoc(doc(db, "users", user.uid), userData);
-    setUser(userData);
-    setIsNewUser(false);
-  };
-
-  return {
-    user,
-    loading,
-    isNewUser,
-    authError,
-    authLoading,
-    signInWithGoogle,
-    signOutUser,
-    completeProfile,
-    clearAuthError: () => setAuthError(null),
-  };
-};
+  return { user, loading, error, signInWithGoogle, logout };
+}
