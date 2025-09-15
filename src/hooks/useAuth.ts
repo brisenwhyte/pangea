@@ -15,11 +15,13 @@ import { doc, getDoc, setDoc } from "firebase/firestore";
 import { auth, db } from "../config/firebase";
 
 interface UserData {
+  name: string | null;
   uid: string;
   email: string | null;
   displayName: string | null;
   photoURL: string | null;
   createdAt?: number;
+  currency?: string; // 👈 Add this
 }
 
 export function useAuth() {
@@ -32,6 +34,7 @@ export function useAuth() {
     if (!fbUser) return;
 
     const userData: UserData = {
+      name:fbUser.displayName,
       uid: fbUser.uid,
       email: fbUser.email,
       displayName: fbUser.displayName,
@@ -144,5 +147,23 @@ export function useAuth() {
     }
   };
 
-  return { user, loading, error, signInWithGoogle, logout };
+  const completeProfile = async (name: string, currency: string) => {
+  if (!user) throw new Error("No user is logged in");
+
+  const ref = doc(db, "users", user.uid);
+
+  const updatedData: Partial<UserData> = {
+    name,
+    currency,
+  };
+
+  await setDoc(ref, updatedData, { merge: true });
+  setUser((prev) => (prev ? { ...prev, ...updatedData } : null));
+
+  console.log("✅ Profile updated:", updatedData);
+};
+
+const clearAuthError = () => setError(null);
+
+  return { user, loading, error, signInWithGoogle, logout, completeProfile, clearAuthError };
 }

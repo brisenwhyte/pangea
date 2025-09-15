@@ -4,7 +4,7 @@ import { LogOut, User, Wallet } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 
 const Header: React.FC = () => {
-  const { user, signOutUser } = useAuth();
+  const { user, logout } = useAuth();
 
   return (
     <motion.header 
@@ -27,8 +27,8 @@ const Header: React.FC = () => {
               <div className="flex items-center space-x-2">
                 {user.photoURL ? (
                   <img 
-                    src={user.photoURL} 
-                    alt={user.name}
+                    src={user.photoURL ?? undefined} 
+                    alt={user.name ?? undefined}
                     className="h-8 w-8 rounded-full"
                   />
                 ) : (
@@ -41,7 +41,7 @@ const Header: React.FC = () => {
               <motion.button
                 whileHover={{ scale: 1.05 }}
                 whileTap={{ scale: 0.95 }}
-                onClick={signOutUser}
+                onClick={logout}
                 className="p-2 text-gray-500 hover:text-red-600 transition-colors"
                 title="Sign Out"
               >

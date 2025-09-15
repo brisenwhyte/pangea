@@ -3,7 +3,7 @@ import { Wallet, AlertCircle, Loader, Info, CheckCircle, XCircle } from 'lucide-
 import { useAuth } from '../../hooks/useAuth';
 
 const LoginScreen: React.FC = () => {
-  const { signInWithGoogle, authLoading, authError, clearAuthError } = useAuth();
+  const { signInWithGoogle, loading: authLoading, error: authError, clearAuthError } = useAuth();
   const [showDebugInfo, setShowDebugInfo] = useState(false);
   const [isRedirecting, setIsRedirecting] = useState(false);
 
