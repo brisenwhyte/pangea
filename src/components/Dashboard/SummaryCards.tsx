@@ -13,9 +13,9 @@ interface SummaryCardsProps {
 const SummaryCards: React.FC<SummaryCardsProps> = ({ transactions, loading = false }) => {
   const { user } = useAuth();
 
-const formatAmount = (amount: number) => {
-  return `${getCurrencySymbol(user?.currency || 'USD')}${Math.abs(amount).toFixed(2)}`;
-};
+  const formatAmount = (amount: number) => {
+    return `${getCurrencySymbol(user?.currency || 'USD')}${Math.abs(amount).toFixed(2)}`;
+  };
 
   const summaryData = useMemo(() => {
     const now = new Date();
@@ -23,25 +23,33 @@ const formatAmount = (amount: number) => {
     const thisMonth = new Date(now.getFullYear(), now.getMonth(), 1);
     const thisYear = new Date(now.getFullYear(), 0, 1);
 
+    // Calculate start of week (Monday)
+    const dayOfWeek = now.getDay(); // 0 = Sunday, 1 = Monday, ...
+    const mondayOffset = (dayOfWeek === 0 ? -6 : 1 - dayOfWeek); 
+    const thisWeek = new Date(now);
+    thisWeek.setHours(0, 0, 0, 0);
+    thisWeek.setDate(now.getDate() + mondayOffset);
+
     const calculateSummary = (filterDate: Date) => {
       const filtered = transactions.filter((t: Transaction) => {
         const transactionDate = t.date instanceof Date ? t.date : new Date(t.date);
         return transactionDate >= filterDate;
       });
-      
+
       const spent = filtered
         .filter((t: Transaction) => t.type === 'spent')
         .reduce((sum: number, t: Transaction) => sum + t.amount, 0);
-      
+
       const received = filtered
         .filter((t: Transaction) => t.type === 'received')
         .reduce((sum: number, t: Transaction) => sum + t.amount, 0);
-      
+
       return { spent, received, net: received - spent };
     };
 
     return {
       today: calculateSummary(today),
+      week: calculateSummary(thisWeek),
       month: calculateSummary(thisMonth),
       year: calculateSummary(thisYear)
     };
@@ -50,8 +58,8 @@ const formatAmount = (amount: number) => {
   // Loading state
   if (loading) {
     return (
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-        {[1, 2, 3].map((item) => (
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+        {[1, 2, 3, 4].map((item) => (
           <motion.div
             key={item}
             initial={{ y: 20, opacity: 0 }}
@@ -76,6 +84,12 @@ const formatAmount = (amount: number) => {
       gradient: 'from-blue-500 to-blue-600'
     },
     {
+      title: 'This Week',
+      icon: TrendingUp,
+      data: summaryData.week,
+      gradient: 'from-orange-500 to-orange-600'
+    },
+    {
       title: 'This Month',
       icon: TrendingUp,
       data: summaryData.month,
@@ -90,7 +104,7 @@ const formatAmount = (amount: number) => {
   ];
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+    <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
       {summaryCards.map((card, index) => (
         <motion.div
           key={card.title}
@@ -105,7 +119,7 @@ const formatAmount = (amount: number) => {
               <card.icon className="h-5 w-5 text-white" />
             </div>
           </div>
-          
+
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <span className="text-sm text-gray-600">Received</span>
@@ -113,16 +127,16 @@ const formatAmount = (amount: number) => {
                 +{formatAmount(card.data.received)}
               </span>
             </div>
-            
+
             <div className="flex items-center justify-between">
               <span className="text-sm text-gray-600">Spent</span>
               <span className="text-sm font-medium text-red-600">
                 -{formatAmount(card.data.spent)}
               </span>
             </div>
-            
+
             <hr className="my-2" />
-            
+
             <div className="flex items-center justify-between">
               <span className="text-sm font-medium text-gray-900">Net</span>
               <div className="flex items-center space-x-1">
@@ -131,9 +145,11 @@ const formatAmount = (amount: number) => {
                 ) : (
                   <TrendingDown className="h-4 w-4 text-red-500" />
                 )}
-                <span className={`text-lg font-bold ${
-                  card.data.net >= 0 ? 'text-green-600' : 'text-red-600'
-                }`}>
+                <span
+                  className={`text-lg font-bold ${
+                    card.data.net >= 0 ? 'text-green-600' : 'text-red-600'
+                  }`}
+                >
                   {card.data.net >= 0 ? '+' : ''}
                   {formatAmount(card.data.net)}
                 </span>
