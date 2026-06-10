@@ -1,0 +1,1 @@
+Pangea is a modern personal finance tracker that helps you manage expenses, set budgets, and gain insights into your spending habits. Built with React, TypeScript, and Firebase, it features a clean, responsive interface for tracking transactions across different categories and monitoring your financial goals in real-time.
